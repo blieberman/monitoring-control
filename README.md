@@ -1,9 +1,6 @@
 # monitoring-control
 Disable and enable monitoring notifications for a particular Nagios host
 
-## Overview
-
-A monitoring control script has been added to the load-balanced chef role to allow deployment tools to disable/enable monitoring on demand. You can call this script by itself or use it in a wrapped manner via node_control.sh. Source is out of chef in the jetsetops repo, and the ops_scripts cookbook pulls in the latest version.
 ##Usage:
 ```
 ./monitoring_control.py -h
