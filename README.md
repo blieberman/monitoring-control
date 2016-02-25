@@ -1,5 +1,5 @@
 # monitoring-control
-Disable and enable monitoring notifications for a particular Nagios host
+Disable and enable monitoring notifications for a particular Nagios host...this is great for deploys in an environment that is sensitive to monitoring.
 
 ##Usage:
 ```
