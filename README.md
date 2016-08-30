@@ -4,13 +4,14 @@ Disable and enable monitoring notifications for a particular Nagios host...this 
 ##Usage:
 ```
 ./monitoring_control.py -h
-usage: monitoring_control.py [-h] [--target T] --operation O
-
+usage: monitoring_control.py [-h] [--target T] --operation O [--duration D]
+ 
 optional arguments:
   -h, --help     show this help message and exit
   --target T     a target hostname to enable/disable notifications;defaults to
                  the run host
   --operation O  a notification operation to execute on a host
+  --duration D   a downtime window duration, in minutes
 ```
 
 ####Examples:
