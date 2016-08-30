@@ -14,27 +14,39 @@ optional arguments:
 ```
 
 ####Examples:
+Downtime all notifications for services for a given duration in minutes for the host it is run on:
+```
+# ./monitoring_control.py --operation downtime --duration 10
+OK
+```
+
 Disable all notifications for the host it is run on:
 ```
-[root@locs01 ~]# /srv/systems/scripts/bin/monitoring_control.py --operation disable
+# ./monitoring_control.py --operation disable
 OK
 ```
 
 Enable all notifications for the host it is run on:
 ```
-[root@locs01 ~]# /srv/systems/scripts/bin/monitoring_control.py --operation enable
+# ./monitoring_control.py --operation enable
+OK
+```
+
+Downtime all notifications for services for a given duration in minutes for a target host:
+```
+# ./monitoring_control.py --operation downtime --duration 10 --target app01.prd.foo.com
 OK
 ```
 
 Disable all notifications for a target host:
 ```
-[root@locs01 ~]# /srv/systems/scripts/bin/monitoring_control.py --operation disable --target locs01.prd.nj1.smartertravel.net
+# ./monitoring_control.py --operation disable --target app01.prd.foo.com
 OK
 ```
 
 Enable all notifications for a target host:
 ```
-[root@locs01 ~]# /srv/systems/scripts/bin/monitoring_control.py --operation enable --target locs01.prd.nj1.smartertravel.net
+# ./monitoring_control.py --operation enable --target app01.prd.foo.com
 OK
 ```
 
