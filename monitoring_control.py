@@ -3,13 +3,14 @@
 ####################
 # Ben Lieberman
 # monitoring_control.py
-# Disable and enable monitoring notifications for a particular Nagios host
+# Disable and enable monitoring notifications for a particular host or VIP
 
 import argparse
 import socket
 import requests
 import sys
 import ConfigParser
+import os
 from urllib import urlencode
 from datetime import datetime
 from datetime import timedelta
@@ -18,18 +19,21 @@ from datetime import timedelta
 # CONFIGURATION
 ####################
 config = ConfigParser.ConfigParser()
-config.read("/etc/monitoring_control/monitoring_control_config.ini")
+config_path = os.path.join(os.path.dirname(__file__), 'monitoring_control_config.ini')
+config.read(config_path)
 
 MON_HOST = config.get("configuration", "mon_host")
 MON_USERNAME = config.get("configuration", "username")
 MON_PASS = config.get("configuration", "password")
 
-OPERATION_CODES = {"enable": 28, "disable": 29, "downtime": 86}
+OPERATION_CODES = {"enable": 28, "disable": 29, "downtime_services": 86, "downtime_host": 55}
 ####################
 
 
 def process_command_line():
-    # returns parsed arguments from the command line
+    """
+    returns parsed arguments from the command line
+    """
 
     # parse for command line arguments...
     parser = argparse.ArgumentParser()
@@ -38,7 +42,8 @@ def process_command_line():
     parser.add_argument("--target", help="a target hostname to enable/disable notifications;" +
                                          "defaults to the run host",
                         dest="t",
-                        default=socket.gethostname())
+                        default=socket.getfqdn().lower(),
+                        required=False)
 
     # take in the an enable or disable notification operation
     parser.add_argument("--operation", help="a notification operation to execute on a host",
@@ -46,22 +51,35 @@ def process_command_line():
                         required=True)
 
     # take in the an enable or disable notification operation
-    parser.add_argument("--duration", help="a downtime window duration, in minutes",
+    parser.add_argument("--duration", help="a downtime window duration, in minutes; default is 10",
                         dest="d",
                         type=int,
+                        default=10,
+                        required=False)
+
+    # take in the an enable or disable notification operation
+    parser.add_argument("--downtime_type", help="a type of downtime, either 'services' or 'host'; default is host",
+                        dest="dt",
+                        default="services",
                         required=False)
 
     args = parser.parse_args()
-    if args.o == "downtime" and args.d is None:
-        parser.error("--operation downtime requires --duration")
+
+    if args.o not in ["enable", "disable", "downtime"]:
+        parser.error("--operation " + args.o + " is not one of 'enable', 'disable', 'downtime'")
+    if (args.o == "downtime") and args.dt not in ["services", "host"]:
+        parser.error("--downtime_type " + args.dt + " is not one of 'services' or 'host'")
 
     return args
 
 
 def send_command(options):
-    # returns a status of a given notification operation request to the monitoring server
+    """
+    returns a status of a given notification operation request to the monitoring server
+    """
+
     call_url = "http://" + MON_USERNAME + ":" + MON_PASS + "@" + MON_HOST \
-                   + "/nagios/cgi-bin//cmd.cgi?"
+               + "/nagios/cgi-bin//cmd.cgi?"
     try:
         r = requests.get(call_url, params=options)
         # get the content from the response to parse
@@ -82,20 +100,23 @@ def send_command(options):
 def main():
     args = process_command_line()
 
-    target = args.t
     # get the operation code of the given operation string
-    operation = OPERATION_CODES[args.o]
+    if args.o == 'downtime':
+        args.o += "_" + args.dt
+
+    operation = args.o
+    target = args.t
     window_in_min = args.d
 
     options = dict()
 
-    options['cmd_typ'] = operation
     options['cmd_mod'] = 2
     options['ahas'] = 'on'
     options['host'] = target
+    options['cmd_typ'] = OPERATION_CODES[operation]
 
     # get optional duration params if actually set
-    if operation == 86:
+    if operation == 'downtime_services' or operation == 'downtime_host':
         curr_time = datetime.now()
         end_time = curr_time + timedelta(minutes=window_in_min)
 
