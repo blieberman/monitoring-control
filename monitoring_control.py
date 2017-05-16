@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 ####################
-# Ben Lieberman
 # monitoring_control.py
 # Disable and enable monitoring notifications for a particular host or VIP
 
@@ -11,9 +10,11 @@ import requests
 import sys
 import ConfigParser
 import os
+import ntplib
 from urllib import urlencode
 from datetime import datetime
 from datetime import timedelta
+import logging
 
 ####################
 # CONFIGURATION
@@ -26,15 +27,35 @@ MON_HOST = config.get("configuration", "mon_host")
 MON_USERNAME = config.get("configuration", "username")
 MON_PASS = config.get("configuration", "password")
 
+NTP_SERVER = config.get("configuration", "ntp_server")
+NTP_VERSION = int(config.get("configuration", "ntp_version"))
+
 OPERATION_CODES = {"enable": 28, "disable": 29, "downtime_services": 86, "downtime_host": 55}
+
+LOG_FORMAT = "%(asctime)s [%(levelname)-5.5s]  %(message)s"
 ####################
+
+
+def initialize_console_logger(log_level):
+    """
+    Add console handler to the logger
+    """
+    log_formatter = logging.Formatter(LOG_FORMAT)
+    mc_logger = logging.getLogger("monitoring-control")
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(log_formatter)
+
+    console_handler.setLevel(log_level)
+    mc_logger.setLevel(logging.DEBUG)
+
+    mc_logger.addHandler(console_handler)
 
 
 def process_command_line():
     """
     returns parsed arguments from the command line
     """
-
     # parse for command line arguments...
     parser = argparse.ArgumentParser()
 
@@ -73,32 +94,58 @@ def process_command_line():
     return args
 
 
+def get_utc_date(ntp_server, ntp_version):
+    """
+    if possible, obtain date via query to time server local to the monitoring server to formulate exact downtime calls
+
+    this is necessary for making calls remotely with servers in other timezones as monitoring server, as monitoring requires
+    dates in downtime calls to be exact
+
+    in a general case, monitoring server has utc server time
+    """
+    mc_logger = logging.getLogger("monitoring-control")
+
+    try:
+        # make remote call to ntp server
+        ntp_client = ntplib.NTPClient()
+        ntp_response = ntp_client.request(ntp_server, version=ntp_version)
+    except socket.error as e:
+        # use local date if remote call fails
+        mc_logger.warning("Could not fetch time from %s due to socket error: %s" % (ntp_server, e))
+        mc_logger.info("Using local time instead of remote...")
+        dt = datetime.utcnow()
+    else:
+        # convert response in seconds to standard linux date format in utc
+        dt = datetime.utcfromtimestamp(ntp_response.tx_time)
+
+    return dt
+
+
 def send_command(options):
     """
     returns a status of a given notification operation request to the monitoring server
     """
-
     call_url = "http://" + MON_USERNAME + ":" + MON_PASS + "@" + MON_HOST \
                + "/nagios/cgi-bin//cmd.cgi?"
     try:
         r = requests.get(call_url, params=options)
+        # anything 400 or 500 is an exception
+        r.raise_for_status()
         # get the content from the response to parse
-        content = r.content
+        text = r.text
 
-        if "successfully submitted" in content:
-            print "OK"
-            return 0
-        else:
-            print content
-            return 1
+        if "successfully submitted" not in text:
+            raise RuntimeError("Response from remote monitoring server denotes critical error")
 
     except requests.exceptions.Timeout:
-        print "Error: Request timed out..."
-        return 1
+        raise RuntimeError("Request to %s timed out" % call_url)
 
 
 def main():
     args = process_command_line()
+    initialize_console_logger(logging.DEBUG)
+
+    mc_logger = logging.getLogger("monitoring-control")
 
     # get the operation code of the given operation string
     if args.o == 'downtime':
@@ -117,7 +164,7 @@ def main():
 
     # get optional duration params if actually set
     if operation == 'downtime_services' or operation == 'downtime_host':
-        curr_time = datetime.now()
+        curr_time = get_utc_date(NTP_SERVER, NTP_VERSION)
         end_time = curr_time + timedelta(minutes=window_in_min)
 
         options['com_data'] = 'set_by_monitoring_control'
@@ -132,9 +179,15 @@ def main():
 
     options = urlencode(options)
     # call the set_notifications method given the command line arguments
-    status = send_command(options)
 
-    sys.exit(status)
+    try:
+        send_command(options)
+        mc_logger.info('OK')
+        return 0
+    except Exception as err:
+        mc_logger.exception("Error from send_command(): %s", err)
+        return 1
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
